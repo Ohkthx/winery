@@ -6,11 +6,6 @@
         <img src="https://img.shields.io/badge/kofi-donate-ffffff.svg?style=for-the-badge&logo=kofi"
             alt="Buy me a coffee! Ko-fi"></a>
 </p>
-<p align="center">
-    <a href="https://discord.gg/HP3fGNtzfs" title="Connect to the community!">
-        <img src="https://img.shields.io/badge/discord-accept%20invite-7289da.svg?style=for-the-badge&logo=discord"
-            alt="Discord connect button."></a>
-</p>
 
 # Winery
 Winery is a cross-platform tool for debugging **Wine** installations and discovering the required **Winetricks** packages.
