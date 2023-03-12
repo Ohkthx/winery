@@ -1,0 +1,367 @@
+#!/usr/bin/env bash
+
+# Created by: Ohkthx (Schism)
+# Purpose of file: This script provides a wrapper for managing,
+#   testing (tasting), and running a WINEPREFIX. It allows for
+#   backing up and restoring from a baseline to streamline testing
+#   of winetricks packages to debug applications that may not work
+#   in a particular environment.
+
+# !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !!
+# CHANGING THE VARIABLES BELOW HAVE NO EFFECT ON THE APPLICATION.
+# THESE ARE THE DEFAULTS. CHECK OUT THE 'settings.sh' FILE
+#   TO MODIFY THE RUNNING SETTINGS.
+#
+# Check for script updates.
+AUTO_UPDATE_SCRIPT="true"
+
+# WINEPREFIX_PARENT is the directory hosting the WINEPREFIX_DIR.
+# WINEPREFIX_DIR is the directory hosting the Wine configuration.
+# WINEPREFIX_ARCH is the architecture of the PREFIX this is often
+#   set to either win32 or win64
+WINEPREFIX_PARENT="$HOME"
+WINEPREFIX_DIR=".wine64_myapp"
+WINEPREFIX_ARCH="win32"
+# NOTE: WINEPREFIX will be set to: WINEPREFIX_PARENT / WINEPREFIX_DIR
+
+# PROGRAM_PARENT is the path starting from WINEPREFIX
+# PROGRAM_EXE is the executable inside PROGRAM_PARENT to execute.
+# PROGRAM_FLAGS are the command line arguments to pass to the executable.
+PROGRAM_PARENT="drive_c/Program Files/MyApp"
+PROGRAM_EXE="MyApp.exe"
+PROGRAM_FLAGS="--debug"
+# NOTE: The application being tasted will be...
+#   WINEPREFIX / PROGRAM_PARENT / PROGRAM_EXE PROGRAM_FLAGS
+
+export WINEPREFIX="$WINEPREFIX_PARENT/$WINEPREFIX_DIR"
+export WINEARCH="win32" # Valid options include win32 and win64
+
+# Backup file name
+BACKUP_FILE_NAME="${WINEPREFIX_DIR}.backup"
+
+# END THE DEFAULT VARIABLES.
+# !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !!
+
+download_file() {
+	local remote_resource="$1"
+	local local_resource="$2"
+
+	# Check which package we are using to pull the updates.
+	local puller_exe=""
+	if command -v curl &>/dev/null; then
+		puller_exe="curl"
+	elif command -v wget &>/dev/null; then
+		puller_exe="wget"
+	fi
+
+	if [[ "$puller_exe" == "" ]]; then
+		echo "[!!] Could not resolve download tool, requires 'curl' or 'wget'"
+	fi
+
+	# Get the headers of the extras file.
+	local headers="content-length: 0"
+	case "$puller_exe" in
+	curl)
+		headers=$(curl -sI "$remote_resource")
+		;;
+	wget)
+		headers=$(wget -q -S -O - "$remote_resource" 2>&1)
+		;;
+	esac
+
+	# Extract and clean the content-length of whitespace.
+	local clength=0
+	clength=$(echo "$headers" | grep -i content-length | awk -F ': ' '{print $2}')
+	clength="${clength//[$'\t\r\n ']/}"
+
+	# Attempt to get the new extras file.
+	if [[ "$clength" -gt 32 ]]; then
+		case "$puller_exe" in
+		curl)
+			curl -so "$local_resource" "$remote_resource"
+			;;
+		wget)
+			wget -q "$remote_resource" -O "$local_resource"
+			;;
+		esac
+
+		if [ ! -f "$local_resource" ]; then
+			echo "[!!] Failed to download file."
+		fi
+	else
+		echo "[!!] Could not located remote file."
+	fi
+}
+
+get_md5() {
+	local filename="$1"
+	local md5_hash
+
+	# Generate the md5 for the file passed.
+	if command -v md5 &>/dev/null; then
+		md5_hash=$(md5 -q "$filename")
+	elif command -v md5sum &>/dev/null; then
+		md5_hash=$(md5sum "$filename" | awk '{print $1}')
+	else
+		echo "  [!!] Unable to located tool to compare md5."
+		exit 1
+	fi
+
+	echo "$md5_hash"
+}
+
+update_script() {
+	echo "[--] Checking for script updates."
+
+	# Pull a new version for the script.
+	local filename="winery"
+	local resource="https://raw.githubusercontent.com/Ohkthx/winery/main/$filename"
+	local current_md5
+	local new_md5
+
+	# Get the md5 before and after attempting update.
+	current_md5=$(get_md5 "$filename")
+	download_file "$resource" "$filename"
+	new_md5=$(get_md5 "$filename")
+
+	# Compare the md5s
+	if [[ "$current_md5" != "$new_md5" ]]; then
+		chmod +x $filename
+		echo "[++] Script update completed. Please rerun ./$filename"
+		exit
+	fi
+
+	echo -e "[++] Script update completed. No update.\n"
+}
+
+create_settings() {
+	{
+		# Send default settings into a new file.
+		cat <<EOF
+# Check for script updates.
+AUTO_UPDATE_SCRIPT="true"
+
+# WINEPREFIX_PARENT is the directory hosting the WINEPREFIX_DIR.
+# WINEPREFIX_DIR is the directory hosting the Wine configuration.
+# WINEPREFIX_ARCH is the architecture of the PREFIX this is often
+#   set to either win32 or win64
+WINEPREFIX_PARENT="$HOME"
+WINEPREFIX_DIR=".wine64_myapp"
+WINEPREFIX_ARCH="win32"
+# NOTE: WINEPREFIX will be set to: WINEPREFIX_PARENT / WINEPREFIX_DIR
+
+# PROGRAM_PARENT is the path starting from WINEPREFIX
+# PROGRAM_EXE is the executable inside PROGRAM_PARENT to execute.
+# PROGRAM_FLAGS are the command line arguments to pass to the executable.
+PROGRAM_PARENT="drive_c/Program Files/MyApp"
+PROGRAM_EXE="MyApp.exe"
+PROGRAM_FLAGS="--debug"
+# NOTE: The application being tasted will be...
+#   WINEPREFIX / PROGRAM_PARENT / PROGRAM_EXE PROGRAM_FLAGS
+EOF
+	} >"$1"
+}
+
+# Checks to make sure WINE is installed, along with its requirements.
+check_wine() {
+	echo "[--] Checking WINE and WINETRICKS installation."
+
+	local required=(
+		"wine"
+		"winetricks"
+		"tar"
+	)
+
+	for req in "${required[@]}"; do
+		if ! command -v "$req" &>/dev/null; then
+			echo "  [!!] $req is required and not installed."
+			exit
+		fi
+	done
+
+	echo -e "[++] WINE and WINETRICKS installation check completed.\n"
+}
+
+start_winecfg() {
+	echo "[++] Starting winecfg."
+
+	if ! command -v winecfg &>/dev/null; then
+		echo "[!!] winecfg not accessible. Is Wine installed?"
+		exit 1
+	fi
+	winecfg
+	echo "[++] Stopped winecfg."
+}
+
+start_winetricks() {
+	echo "[++] Starting Winetricks."
+
+	if ! command -v winetricks &>/dev/null; then
+		echo "[!!] Winetricks not accessible. Is it installed?"
+		exit 1
+	fi
+
+	winetricks "$@"
+
+	echo "[++] Stopped Winetricks."
+}
+
+start_taste() {
+	echo "[++] Starting the tasting."
+	if [ ! -d "$WINEPREFIX/$PROGRAM_PARENT" ]; then
+		echo "  [!!] Parent directory missing, bad installation?"
+		exit
+	elif [ ! -f "$WINEPREFIX/$PROGRAM_PARENT/$PROGRAM_EXE" ]; then
+		echo "  [!!] Program executable missing, bad installation?"
+		exit
+	fi
+
+	cd "$WINEPREFIX/$PROGRAM_PARENT" || exit
+	wine "$PROGRAM_EXE" $PROGRAM_FLAGS "$@"
+	echo "[++] Stopped the tasting."
+}
+
+confirm() {
+	read -r -p "Do you wish to continue? [Y/n] " input
+
+	case $input in
+	[yY][eE][sS] | [yY])
+		echo "true"
+		;;
+	*)
+		echo "false"
+		;;
+	esac
+}
+
+backup_prefix() {
+	echo "[--] Creating backup of the current WINE PREFIX."
+
+	local filename="${BACKUP_FILE_NAME}.tgz"
+
+	# Make sure we are not overriding another backup.
+	if [ -d "$filename" ]; then
+		echo "Backup already exists, do you wish to override it?"
+		local remove
+		remove=$(confirm)
+		if [[ "$remove" == "false" ]]; then
+			return
+		fi
+	fi
+
+	# Create the backup.
+	local current_dir
+	current_dir=$(pwd)
+
+	# Pack the tarball of the prefix.
+	cd "$WINEPREFIX_PARENT" || exit
+	tar czf "$filename" "$WINEPREFIX_DIR"
+	cd "$current_dir" || exit
+
+	echo "[++] Backup completed."
+}
+
+restore_prefix() {
+	echo "[--] Restoring from a WINE PREFIX backup."
+
+	# Get the backup file name or directory.
+	local filename="${BACKUP_FILE_NAME}.tgz"
+	if [ ! -f "$WINEPREFIX_PARENT/$filename" ]; then
+		echo "  [!!] Backup does not exist."
+		return
+	fi
+
+	# Restore from file.
+	local current_dir
+	current_dir=$(pwd)
+
+	# Unpack the tarball of the prefix.
+	cd "$WINEPREFIX_PARENT" || exit
+	tar xzf "$filename"
+	cd "$current_dir" || exit
+
+	echo "[++] WINE PREFIX restoration complete."
+}
+
+usage() {
+	echo -e "\nusage: $1 [--help] [--taste] [--backup] [--restore]"
+	echo -e "\n--help           Shows this message."
+	echo "--taste          Test (taste) the product, start it to see if it works."
+	echo "--winecfg        Starts winecfg in the proper environment."
+	echo "--winetricks     Must be last flag, installs remaining arguments."
+	echo -e "\n--backup         Create a backup of the WINE PREFIX."
+	echo "--restore        Override current WINE PREFIX with a backup."
+	echo -e "\nExamples:"
+	echo -e "  Test Application:  ./winery --taste"
+	echo -e "  Add Packages:      ./winery --winetricks corefonts dotnet48"
+	echo -e "  Launch WINECFG:    ./winery --winecfg"
+	echo -e "  Backup prefix:     ./winery --backup"
+	echo -e "  Restore prefix:    ./winery --restore"
+	echo -e "\nReport issues to:"
+	echo -e "  https://github.com/Ohkthx/winery"
+}
+
+main() {
+	local script_name="$0"
+
+	# Ensure a settings file exists.
+	local settings_file="./settings.sh"
+	if [ ! -f "$settings_file" ]; then
+		echo "[!!] Creating the settings file: $settings_file"
+		create_settings "$settings_file"
+		echo "[++] Created the settings file, please edit and relaunch."
+		exit 1
+	fi
+
+	. "$settings_file"
+
+	# Update the script if the settings allows it.
+	if [[ "$AUTO_UPDATE_SCRIPT" == "true" ]]; then
+		update_script
+	fi
+
+	# Update default settings.
+	BACKUP_FILE_NAME="${WINEPREFIX_DIR}.backup"
+	export WINEPREFIX="$WINEPREFIX_PARENT/$WINEPREFIX_DIR"
+	export WINEARCH="$WINEPREFIX_ARCH"
+
+	# Make sure wine and winetricks is installed.
+	check_wine
+
+	# Parse the parameters.
+	while [[ $# -gt 0 ]]; do
+		key="$1"
+		case $key in
+		--help)
+			usage "$script_name"
+			exit
+			;;
+		--taste | --test | --start)
+			shift
+			start_taste "$@"
+			;;
+		--winecfg)
+			start_winecfg
+			exit
+			;;
+		--winetricks)
+			shift
+			start_winetricks "$@"
+			exit
+			;;
+		--backup)
+			backup_prefix
+			exit
+			;;
+		--restore)
+			restore_prefix
+			exit
+			;;
+		*)
+			shift
+			;;
+		esac
+	done
+}
+
+main "$@"
