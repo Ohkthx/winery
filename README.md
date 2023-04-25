@@ -1,10 +1,14 @@
 <p align="center">
     <a href="https://patreon.com/ohkthx" title="Donate to this project using Patreon">
-        <img src="https://img.shields.io/badge/patreon-donate-red.svg?style=for-the-badge&logo=patreon"
+        <img src="https://img.shields.io/badge/patreon-donate-red.svg?style=for-the-badge&color=f38ba8&label=PATREON&logo=patreon&logoColor=f38ba8&labelColor=11111b"
             alt="Patreon donate button"></a>
     <a href="https://ko-fi.com/G2G0J79MY" title="Donate to this project using Ko-fi">
-        <img src="https://img.shields.io/badge/kofi-donate-ffffff.svg?style=for-the-badge&logo=kofi"
+        <img src="https://img.shields.io/badge/kofi-donate-ffffff.svg?style=for-the-badge&color=fab387&label=KOFI&logo=kofi&logoColor=fab387&labelColor=11111b"
             alt="Buy me a coffee! Ko-fi"></a>
+<br>
+    <a href="https://github.com/ohkthx/winery" title="Size of the repo!">
+        <img src="https://img.shields.io/github/repo-size/ohkthx/winery?style=for-the-badge&color=cba6f7&label=SIZE&logo=codesandbox&logoColor=cba6f7&labelColor=11111b"
+            alt="No data."></a>
 </p>
 
 # Winery
